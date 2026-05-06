@@ -3,12 +3,10 @@ import sys
 import os
 import re
 
-ALLOWED_PORTS = [9050, 9150, 1080, 8080, 3128, 8081, 8888, 9999, 1081, 1082, 1083, 1084, 1085, 1086, 1087, 1088, 1089, 1090, 1091, 1092, 1093, 1094, 1095, 1096, 1097, 1098, 1099,
-1100, 1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110, 1111, 1112, 1113, 1114, 1115, 1116, 1117, 1118, 1119, 1120, 1121, 1122, 1123, 1124, 1125, 1126, 1127, 1128, 1129, 1130, 1131, 1132, 1133, 1134, 1135, 1136, 1137, 1138, 1139, 1140,
-1141, 1142, 1143, 1144, 1145, 1146, 1147, 1148, 1149, 1150, 1151, 1152, 1153, 1154, 1155, 1156, 1157, 1158, 1159, 1160, 1161, 1162, 1163, 1164, 1165, 1166, 1167, 1168, 1169, 1170,
-1171, 1172, 1173, 1174, 1175, 1176, 1177, 1178, 1179, 1180, 1181, 1182, 1183, 1184, 1185, 1186, 1187, 1188, 1189, 1190, 1191, 1192, 1193, 1194, 1195, 1196, 1197, 1198, 1199,
-1200, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208, 1209, 1210, 1211, 1212, 1213, 1214, 1215, 1216, 1217, 1218, 1219, 1220, 1221, 1222, 1223, 1224, 1225, 1226, 1227,
-1228, 1229, 1230, 1231, 1232, 1233, 1234, 1235, 1236, 1237, 1238, 1239, 1240, 1241, 1242, 1243, 1244, 1245, 1246, 1247, 1248, 1249, 1250] #you can add more ports btw
+ALLOWED_PORTS = {
+    9050, 9150, 1080, 8080, 3128, 8081, 8888, 9999,
+    *range(1081, 1251)  # 1081 to 1250 inclusive
+}
 
 def scan_subdomains(file_path, output_dir="nmap results"):
     if not os.path.exists(output_dir):
@@ -21,43 +19,43 @@ def scan_subdomains(file_path, output_dir="nmap results"):
         print(f"Scanning {subdomain}...")
         output_file = os.path.join(output_dir, f"{subdomain}_scan.txt")
 
-        try:
-            # scan principal (todas as portas TCP)
+        # Primary scan (all TCP ports)
+        result = subprocess.run(
+            ["nmap", "-p-", subdomain],
+            capture_output=True,
+            text=True
+        )
+
+        # Fallback scan if primary fails
+        if result.returncode != 0:
+            print(f"Primary scan failed for {subdomain}, trying fallback...")
             result = subprocess.run(
-                ["nmap", "-p-", subdomain],
+                ["nmap", "-sS", "-Pn", "-sV", subdomain],
                 capture_output=True,
                 text=True
             )
 
-        except Exception as e:
-            print(f"Scan failed: {e}")
-
-            
-            cmd = ["nmap", "-sS", "-Pn", "-sV", subdomain]
-
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True)
-            except Exception as e:
-                print(f"alternative scan failed: {e}")
+            if result.returncode != 0:
+                print(f"Fallback scan also failed for {subdomain}, skipping.")
                 continue
 
         with open(output_file, 'w') as out_f:
             out_f.write(result.stdout)
 
-        print(f"Saving scan in{output_file}")
+        print(f"Saving scan in {output_file}")
 
         open_ports = set()
 
-        with open(output_file, 'r') as f:
-            for line in f:
-                match = re.search(r'(\d+)/tcp\s+open', line)
-                if match:
-                    port = int(match.group(1))
+        for line in result.stdout.splitlines():
+            match = re.search(r'(\d+)/tcp\s+open', line)
+            if match:
+                port = int(match.group(1))
+                print(f"Open port found: {port} on {subdomain}")
 
-                    if port in ALLOWED_PORTS:
-                        open_ports.add(port)
-
-                    print(f"Open port found: {port} on {subdomain}")
+                if port in ALLOWED_PORTS:
+                    open_ports.add(port)
 
         if open_ports:
-            print(f"Open ports found on:{subdomain}: {sorted(open_ports)}")
+            print(f"Open ports found on: {subdomain}: {sorted(open_ports)}")
+        else:
+            print(f"No allowed ports found on: {subdomain}")
